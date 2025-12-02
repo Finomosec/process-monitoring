@@ -113,7 +113,8 @@ app.get('/metrics', async (req, res) => {
   for (const [pid, data] of storage.entries()) {
     const running = await isProcessRunning(pid);
     const status = running ? 'running' : 'died';
-    metrics += `process_monitoring{computer="${data.computer}",name="${data.name}",status="${status}"} 1\n`;
+    const value = running ? 1 : 0;
+    metrics += `process_monitoring{computer="${data.computer}",name="${data.name}",status="${status}"} ${value}\n`;
 
     if (!running) {
       storage.delete(pid);
