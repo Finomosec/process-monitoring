@@ -1,0 +1,14 @@
+[Unit]
+Description=Prometheus Process Monitor
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/process-monitoring
+ExecStart=/usr/bin/node --env-file=.env index.js
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+
