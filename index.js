@@ -31,19 +31,18 @@ app.get('/', (req, res) => {
 
       <div class="endpoint">
         <h3>Register Process</h3>
-        <code>GET /api/started?name=NAME&pid=PID&computer=COMPUTER</code>
+        <code>GET /api/started?pid=$$&name=NAME</code>
         <p>Registers a process for monitoring.</p>
         <p><strong>Parameters:</strong></p>
         <ul>
           <li><code>name</code> - Process name</li>
           <li><code>pid</code> - Process ID</li>
-          <li><code>computer</code> - Computer/host name</li>
         </ul>
       </div>
 
       <div class="endpoint">
         <h3>Unregister Process</h3>
-        <code>GET /api/finished?pid=PID</code>
+        <code>GET /api/finished?pid=$$</code>
         <p>Removes a process from monitoring.</p>
         <p><strong>Parameters:</strong></p>
         <ul>
@@ -56,8 +55,8 @@ app.get('/', (req, res) => {
         <code>GET /metrics</code>
         <p>Returns Prometheus-formatted metrics. Checks if each registered process is still running.</p>
         <p><strong>Metric format:</strong></p>
-        <pre>process_monitoring{computer="COMPUTER",name="NAME",status="running"} 1
-process_monitoring{computer="COMPUTER",name="NAME",status="died"} 1</pre>
+        <pre>process_monitoring{name="NAME",status="running"} 1
+process_monitoring{name="NAME",status="died"} 0</pre>
         <p><strong>Note:</strong> Processes with status "died" are automatically removed from storage after being reported.</p>
       </div>
     </body>
@@ -84,13 +83,13 @@ async function isProcessRunning(pid) {
 }
 
 app.get('/api/started', (req, res) => {
-  const { name, pid, computer } = req.query;
+  const { name, pid } = req.query;
 
-  if (!name || !pid || !computer) {
-    return res.status(400).json({ error: 'Missing required parameters: name, pid, computer' });
+  if (!name || !pid) {
+    return res.status(400).json({ error: 'Missing required parameters: name, pid' });
   }
 
-  storage.set(pid, { name, computer, pid });
+  storage.set(pid, { name, pid });
   res.json({ success: true, message: 'Process registered' });
 });
 
@@ -114,7 +113,7 @@ app.get('/metrics', async (req, res) => {
     const running = await isProcessRunning(pid);
     const status = running ? 'running' : 'died';
     const value = running ? 1 : 0;
-    metrics += `process_monitoring{computer="${data.computer}",name="${data.name}",status="${status}"} ${value}\n`;
+    metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
 
     if (!running) {
       storage.delete(pid);
