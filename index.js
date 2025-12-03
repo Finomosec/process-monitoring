@@ -89,7 +89,13 @@ app.get('/api/started', (req, res) => {
     return res.status(400).json({ error: 'Missing required parameters: name, pid' });
   }
 
-  storage.set(pid, { name, pid });
+  storage.set(pid, {
+    name,
+    pid,
+    createdAt: Date.now(),
+    reportedCounter: 0,
+    finished: false
+  });
   res.json({ success: true, message: 'Process registered' });
 });
 
@@ -100,22 +106,46 @@ app.get('/api/finished', (req, res) => {
     return res.status(400).json({ error: 'Missing required parameter: pid' });
   }
 
-  const deleted = storage.delete(pid);
-  res.json({ success: deleted, message: deleted ? 'Process removed' : 'Process not found' });
+  const process = storage.get(pid);
+
+  if (!process) {
+    return res.json({ success: false, message: 'Process not found' });
+  }
+
+  if (process.reportedCounter === 0) {
+    process.finished = true;
+    storage.set(pid, process);
+    res.json({ success: true, message: 'Process marked as finished' });
+  } else {
+    storage.delete(pid);
+    res.json({ success: true, message: 'Process removed' });
+  }
 });
 
 app.get('/metrics', async (req, res) => {
   res.set('Content-Type', 'text/plain');
 
+  const now = Date.now();
+  const oneMinuteAgo = now - 60000;
+
   let metrics = '# TYPE process_monitoring gauge\n';
 
   for (const [pid, data] of storage.entries()) {
-    const running = await isProcessRunning(pid);
-    const status = running ? 'running' : 'died';
-    const value = running ? 1 : 0;
-    metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
+    const shouldOutput = !data.finished || (data.finished && data.createdAt >= oneMinuteAgo);
 
-    if (!running) {
+    if (shouldOutput) {
+      const running = await isProcessRunning(pid);
+      const status = running ? 'running' : 'died';
+      const value = running ? 1 : 0;
+      metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
+
+      data.reportedCounter++;
+      storage.set(pid, data);
+    }
+  }
+
+  for (const [pid, data] of storage.entries()) {
+    if (data.finished) {
       storage.delete(pid);
     }
   }
