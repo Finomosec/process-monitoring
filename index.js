@@ -134,8 +134,8 @@ app.get('/metrics', async (req, res) => {
     const shouldOutput = !data.finished || (data.finished && data.createdAt >= oneMinuteAgo);
 
     if (shouldOutput) {
-      const running = await isProcessRunning(pid);
-      const status = running ? 'running' : 'died';
+      const running = data.finished || await isProcessRunning(pid);
+      const status = data.finished ? 'finished' : running ? 'running' : 'died';
       const value = running ? 1 : 0;
       metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
 
