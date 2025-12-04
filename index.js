@@ -1,6 +1,7 @@
 import express from 'express';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { access, constants } from 'fs/promises';
 
 const execAsync = promisify(exec);
 const app = express();
@@ -74,7 +75,7 @@ async function isProcessRunning(pid) {
     }
   } else {
     try {
-      await execAsync(`kill -0 ${pid}`);
+      await access(`/proc/${pid}`, constants.F_OK);
       return true;
     } catch {
       return false;
