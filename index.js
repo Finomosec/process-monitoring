@@ -133,22 +133,20 @@ app.get('/metrics', async (req, res) => {
 
   for (const [pid, data] of storage.entries()) {
     const shouldOutput = !data.finished || (data.finished && data.createdAt >= oneMinuteAgo);
-
     if (shouldOutput) {
       const running = data.finished || await isProcessRunning(pid);
       const status = data.finished ? 'finished' : running ? 'running' : 'died';
       const value = running ? 1 : 0;
       metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
-
-      data.reportedCounter++;
-      storage.set(pid, data);
-    }
-  }
-
-  for (const [pid, data] of storage.entries()) {
-    if (data.finished) {
-      storage.delete(pid);
-    }
+			if (data.finished || !running) {
+				storage.delete(pid);
+			} else {
+	      data.reportedCounter++;
+  	    storage.set(pid, data);
+			}
+    } else {
+			storage.delete(pid);
+		}
   }
 
   res.send(metrics);
