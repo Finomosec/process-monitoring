@@ -113,14 +113,9 @@ app.get('/api/finished', (req, res) => {
     return res.json({ success: false, message: 'Process not found' });
   }
 
-  if (process.reportedCounter === 0) {
-    process.finished = true;
-    storage.set(pid, process);
-    res.json({ success: true, message: 'Process marked as finished' });
-  } else {
-    storage.delete(pid);
-    res.json({ success: true, message: 'Process removed' });
-  }
+  process.finished = true;
+  storage.set(pid, process);
+  res.json({ success: true, message: 'Process marked as finished' });
 });
 
 app.get('/metrics', async (req, res) => {
@@ -136,7 +131,7 @@ app.get('/metrics', async (req, res) => {
     if (shouldOutput) {
       const running = data.finished || await isProcessRunning(pid);
       const status = data.finished ? 'finished' : running ? 'running' : 'died';
-      const value = running ? 1 : 0;
+      const value = data.finished ? 2 : running ? 1 : 0;
       metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
 			if (data.finished || !running) {
 				storage.delete(pid);
