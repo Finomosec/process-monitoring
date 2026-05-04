@@ -1,13 +1,37 @@
 import express from 'express';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { access, constants } from 'fs/promises';
 
-const execAsync = promisify(exec);
 const app = express();
 const PORT = process.env.PORT || 3000;
+const STALE_TIMEOUT = 300000; // 5 minutes
 
 const storage = new Map();
+
+async function isProcessRunning(pid) {
+  try {
+    await access(`/proc/${pid}`, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function markDied(pid, data) {
+  if (!data.endedAt) {
+    data.endedAt = Date.now();
+    data.status = 'died';
+    storage.set(pid, data);
+  }
+}
+
+// Background check every 30s
+setInterval(async () => {
+  for (const [pid, data] of storage.entries()) {
+    if (!data.endedAt && !await isProcessRunning(pid)) {
+      markDied(pid, data);
+    }
+  }
+}, 30000);
 
 app.get('/', (req, res) => {
   res.send(`
@@ -32,56 +56,28 @@ app.get('/', (req, res) => {
 
       <div class="endpoint">
         <h3>Register Process</h3>
-        <code>GET /api/started?pid=$$&name=NAME</code>
+        <code>GET /api/started?pid=$$&amp;name=NAME</code>
         <p>Registers a process for monitoring.</p>
-        <p><strong>Parameters:</strong></p>
-        <ul>
-          <li><code>name</code> - Process name</li>
-          <li><code>pid</code> - Process ID</li>
-        </ul>
       </div>
 
       <div class="endpoint">
         <h3>Unregister Process</h3>
         <code>GET /api/finished?pid=$$</code>
-        <p>Removes a process from monitoring.</p>
-        <p><strong>Parameters:</strong></p>
-        <ul>
-          <li><code>pid</code> - Process ID</li>
-        </ul>
+        <p>Marks a process as cleanly finished.</p>
       </div>
 
       <div class="endpoint">
         <h3>Prometheus Metrics</h3>
         <code>GET /metrics</code>
-        <p>Returns Prometheus-formatted metrics. Checks if each registered process is still running.</p>
-        <p><strong>Metric format:</strong></p>
-        <pre>process_monitoring{name="NAME",status="running"} 1
-process_monitoring{name="NAME",status="died"} 0</pre>
-        <p><strong>Note:</strong> Processes with status "died" are automatically removed from storage after being reported.</p>
+        <p>Returns Prometheus-formatted metrics.</p>
+        <pre>process_monitoring{name="NAME",status="running"}  1
+process_monitoring{name="NAME",status="died"}     0
+process_monitoring{name="NAME",status="finished"} 2</pre>
       </div>
     </body>
     </html>
   `);
 });
-
-async function isProcessRunning(pid) {
-  if (process.platform === 'win32') {
-    try {
-      await execAsync(`tasklist /FI "PID eq ${pid}"`);
-      return true;
-    } catch {
-      return false;
-    }
-  } else {
-    try {
-      await access(`/proc/${pid}`, constants.F_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
 
 app.get('/api/started', (req, res) => {
   const { name, pid } = req.query;
@@ -94,8 +90,9 @@ app.get('/api/started', (req, res) => {
     name,
     pid,
     createdAt: Date.now(),
-    reportedCounter: 0,
-    finished: false
+    endedAt: null,
+    status: 'running',
+    reported: false
   });
   res.json({ success: true, message: 'Process registered' });
 });
@@ -107,14 +104,15 @@ app.get('/api/finished', (req, res) => {
     return res.status(400).json({ error: 'Missing required parameter: pid' });
   }
 
-  const process = storage.get(pid);
+  const proc = storage.get(pid);
 
-  if (!process) {
+  if (!proc) {
     return res.json({ success: false, message: 'Process not found' });
   }
 
-  process.finished = true;
-  storage.set(pid, process);
+  proc.endedAt = Date.now();
+  proc.status = 'finished';
+  storage.set(pid, proc);
   res.json({ success: true, message: 'Process marked as finished' });
 });
 
@@ -122,26 +120,27 @@ app.get('/metrics', async (req, res) => {
   res.set('Content-Type', 'text/plain');
 
   const now = Date.now();
-  const oneMinuteAgo = now - 60000;
-
   let metrics = '# TYPE process_monitoring gauge\n';
 
   for (const [pid, data] of storage.entries()) {
-    const shouldOutput = !data.finished || (data.finished && data.createdAt >= oneMinuteAgo);
-    if (shouldOutput) {
-      const running = data.finished || await isProcessRunning(pid);
-      const status = data.finished ? 'finished' : running ? 'running' : 'died';
-      const value = data.finished ? 2 : running ? 1 : 0;
-      metrics += `process_monitoring{name="${data.name}",status="${status}"} ${value}\n`;
-			if (data.finished || !running) {
-				storage.delete(pid);
-			} else {
-	      data.reportedCounter++;
-  	    storage.set(pid, data);
-			}
+    // Check alive (in addition to background timer)
+    if (!data.endedAt && !await isProcessRunning(pid)) {
+      markDied(pid, data);
+    }
+
+    if (data.endedAt) {
+      // Ended process: report once, then delete. Drop if stale.
+      if (now - data.endedAt > STALE_TIMEOUT) {
+        storage.delete(pid);
+        continue;
+      }
+      const value = data.status === 'finished' ? 2 : 0;
+      metrics += `process_monitoring{name="${data.name}",status="${data.status}"} ${value}\n`;
+      storage.delete(pid);
     } else {
-			storage.delete(pid);
-		}
+      // Running
+      metrics += `process_monitoring{name="${data.name}",status="running"} 1\n`;
+    }
   }
 
   res.send(metrics);
