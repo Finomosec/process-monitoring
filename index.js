@@ -4,6 +4,7 @@ import { dirname } from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const METRIC_NAME = process.env.METRIC_NAME || 'process_monitoring';
 const STALE_TIMEOUT = 300000; // 5 minutes
 const STATE_FILE = process.env.STATE_FILE || '/tmp/process-monitor-state.json';
 
@@ -102,9 +103,9 @@ app.get('/', (req, res) => {
         <h3>Prometheus Metrics</h3>
         <code>GET /metrics</code>
         <p>Returns Prometheus-formatted metrics.</p>
-        <pre>process_monitoring{name="NAME",status="running"}  1
-process_monitoring{name="NAME",status="died"}     0
-process_monitoring{name="NAME",status="finished"} 2</pre>
+        <pre>${METRIC_NAME}{name="NAME",status="running"}  1
+${METRIC_NAME}{name="NAME",status="died"}     0
+${METRIC_NAME}{name="NAME",status="finished"} 2</pre>
       </div>
     </body>
     </html>
@@ -154,7 +155,7 @@ app.get('/metrics', async (req, res) => {
   res.set('Content-Type', 'text/plain');
 
   const now = Date.now();
-  let metrics = '# TYPE process_monitoring gauge\n';
+  let metrics = `# TYPE ${METRIC_NAME} gauge\n`;
 
   for (const [pid, data] of storage.entries()) {
     // Check alive (in addition to background timer)
@@ -172,11 +173,11 @@ app.get('/metrics', async (req, res) => {
         continue;
       }
       const value = data.status === 'finished' ? 2 : 0;
-      metrics += `process_monitoring{name="${data.name}",status="${data.status}"} ${value}\n`;
+      metrics += `${METRIC_NAME}{name="${data.name}",status="${data.status}"} ${value}\n`;
       data.reported = true;
     } else {
       // Running
-      metrics += `process_monitoring{name="${data.name}",status="running"} 1\n`;
+      metrics += `${METRIC_NAME}{name="${data.name}",status="running"} 1\n`;
     }
   }
 
