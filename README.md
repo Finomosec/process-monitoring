@@ -84,6 +84,7 @@ The server checks if a process is still alive by testing for `/proc/<pid>`. This
 ## Caveats
 
 - **Local processes only.** The server verifies processes via `/proc/<pid>`, which only works for processes on the same machine. If a remote process registers itself (e.g. via `curl` from another host), the server won't find `/proc/<pid>` locally and will immediately report it as `died`. Each machine needs its own process-monitor instance.
+- **Monitor restart while processes are running.** If a tracked process finishes cleanly while the monitor is down (e.g. during an update), the `/api/finished` call fails silently. After restart, the monitor loads the process as `running`, finds `/proc/<pid>` gone, and incorrectly reports `died` instead of `finished`.
 
 ## Deployment
 
