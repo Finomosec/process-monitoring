@@ -124,8 +124,7 @@ app.get('/api/started', async (req, res) => {
     pid,
     createdAt: Date.now(),
     endedAt: null,
-    status: 'running',
-    reported: false
+    status: 'running'
   });
   await saveState();
   res.json({ success: true, message: 'Process registered' });
@@ -164,17 +163,13 @@ app.get('/metrics', async (req, res) => {
     }
 
     if (data.endedAt) {
-      // Ended process: report once, then clean up.
-      if (data.reported) {
-        // Already reported — delete if stale, otherwise skip
-        if (now - data.endedAt > STALE_TIMEOUT) {
-          storage.delete(pid);
-        }
+      // Ended process: keep reporting until stale, then clean up.
+      if (now - data.endedAt > STALE_TIMEOUT) {
+        storage.delete(pid);
         continue;
       }
       const value = data.status === 'finished' ? 2 : 0;
       metrics += `${METRIC_NAME}{name="${data.name}",status="${data.status}"} ${value}\n`;
-      data.reported = true;
     } else {
       // Running
       metrics += `${METRIC_NAME}{name="${data.name}",status="running"} 1\n`;
