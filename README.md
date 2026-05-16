@@ -64,6 +64,7 @@ Via environment variables (or `.env` file with `--env-file=.env`):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3000` | HTTP server port |
+| `METRIC_NAME` | `process_monitoring` | Prometheus metric name |
 | `STATE_FILE` | `/tmp/process-monitor-state.json` | Path for persisting running processes across restarts |
 
 ## State Persistence
