@@ -81,6 +81,11 @@ The server checks if a process is still alive by testing for `/proc/<pid>`. This
 - Detection delay for unexpected deaths: up to 30 seconds (background polling interval)
 - The `/metrics` endpoint also checks on demand, so scraping triggers immediate detection
 
+## Caveats
+
+- **Local processes only.** The server verifies processes via `/proc/<pid>`, which only works for processes on the same machine. If a remote process registers itself (e.g. via `curl` from another host), the server won't find `/proc/<pid>` locally and will immediately report it as `died`. Each machine needs its own process-monitor instance.
+- **PID reuse.** If a tracked PID is reused by an unrelated process before the end-state is reported, the server may incorrectly show it as `running`. In practice this is rare due to the 30s polling interval and PID space size.
+
 ## Deployment
 
 ### systemd user service
