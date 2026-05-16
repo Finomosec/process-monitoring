@@ -1,11 +1,43 @@
 import express from 'express';
-import { access, constants } from 'fs/promises';
+import { access, constants, readFile, writeFile } from 'fs/promises';
+import { dirname } from 'path';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const STALE_TIMEOUT = 300000; // 5 minutes
+const STATE_FILE = process.env.STATE_FILE || '/tmp/process-monitor-state.json';
 
 const storage = new Map();
+
+async function saveState() {
+  const entries = [];
+  for (const [pid, data] of storage.entries()) {
+    if (!data.endedAt) {
+      entries.push([pid, data]);
+    }
+  }
+  try {
+    await writeFile(STATE_FILE, JSON.stringify(entries));
+  } catch (e) {
+    console.error('Failed to save state:', e.message);
+  }
+}
+
+async function loadState() {
+  try {
+    const raw = await readFile(STATE_FILE, 'utf-8');
+    const entries = JSON.parse(raw);
+    for (const [pid, data] of entries) {
+      storage.set(pid, data);
+    }
+    console.log(`Loaded ${entries.length} processes from state file`);
+  } catch {
+    // No state file or invalid — start fresh
+  }
+}
+
+// Load state on startup
+await loadState();
 
 async function isProcessRunning(pid) {
   try {
@@ -79,7 +111,7 @@ process_monitoring{name="NAME",status="finished"} 2</pre>
   `);
 });
 
-app.get('/api/started', (req, res) => {
+app.get('/api/started', async (req, res) => {
   const { name, pid } = req.query;
 
   if (!name || !pid) {
@@ -94,10 +126,11 @@ app.get('/api/started', (req, res) => {
     status: 'running',
     reported: false
   });
+  await saveState();
   res.json({ success: true, message: 'Process registered' });
 });
 
-app.get('/api/finished', (req, res) => {
+app.get('/api/finished', async (req, res) => {
   const { pid } = req.query;
 
   if (!pid) {
@@ -113,6 +146,7 @@ app.get('/api/finished', (req, res) => {
   proc.endedAt = Date.now();
   proc.status = 'finished';
   storage.set(pid, proc);
+  await saveState();
   res.json({ success: true, message: 'Process marked as finished' });
 });
 
@@ -149,6 +183,15 @@ app.get('/metrics', async (req, res) => {
   res.send(metrics);
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Graceful shutdown: save state before exit
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    console.log(`${sig} received, saving state...`);
+    await saveState();
+    server.close(() => process.exit(0));
+  });
+}
