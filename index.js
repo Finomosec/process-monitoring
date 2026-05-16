@@ -18,7 +18,9 @@ async function saveState() {
     }
   }
   try {
-    await writeFile(STATE_FILE, JSON.stringify(entries));
+    await writeFile(STATE_FILE, JSON.stringify(entries, (key, value) =>
+      value instanceof Set ? [...value] : value
+    ));
   } catch (e) {
     console.error('Failed to save state:', e.message);
   }
@@ -29,6 +31,7 @@ async function loadState() {
     const raw = await readFile(STATE_FILE, 'utf-8');
     const entries = JSON.parse(raw);
     for (const [pid, data] of entries) {
+      if (data.reportedTo) data.reportedTo = new Set(data.reportedTo);
       storage.set(pid, data);
     }
     console.log(`Loaded ${entries.length} processes from state file`);
@@ -163,11 +166,15 @@ app.get('/metrics', async (req, res) => {
     }
 
     if (data.endedAt) {
-      // Ended process: keep reporting until stale, then clean up.
+      // Ended process: report exactly once per scraper, then clean up when stale.
       if (now - data.endedAt > STALE_TIMEOUT) {
         storage.delete(pid);
         continue;
       }
+      const scraper = req.socket.remoteAddress;
+      if (!data.reportedTo) data.reportedTo = new Set();
+      if (data.reportedTo.has(scraper)) continue;
+      data.reportedTo.add(scraper);
       const value = data.status === 'finished' ? 2 : 0;
       metrics += `${METRIC_NAME}{name="${data.name}",status="${data.status}"} ${value}\n`;
     } else {
