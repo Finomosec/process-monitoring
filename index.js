@@ -13,7 +13,8 @@ const storage = new Map();
 async function saveState() {
   const entries = [];
   for (const [pid, data] of storage.entries()) {
-    if (!data.endedAt) {
+    // Save running processes and ended processes not yet fully reported
+    if (!data.endedAt || (Date.now() - data.endedAt < STALE_TIMEOUT)) {
       entries.push([pid, data]);
     }
   }
