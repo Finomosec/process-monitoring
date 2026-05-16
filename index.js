@@ -129,14 +129,17 @@ app.get('/metrics', async (req, res) => {
     }
 
     if (data.endedAt) {
-      // Ended process: report once, then delete. Drop if stale.
-      if (now - data.endedAt > STALE_TIMEOUT) {
-        storage.delete(pid);
+      // Ended process: report once, then clean up.
+      if (data.reported) {
+        // Already reported — delete if stale, otherwise skip
+        if (now - data.endedAt > STALE_TIMEOUT) {
+          storage.delete(pid);
+        }
         continue;
       }
       const value = data.status === 'finished' ? 2 : 0;
       metrics += `process_monitoring{name="${data.name}",status="${data.status}"} ${value}\n`;
-      storage.delete(pid);
+      data.reported = true;
     } else {
       // Running
       metrics += `process_monitoring{name="${data.name}",status="running"} 1\n`;
