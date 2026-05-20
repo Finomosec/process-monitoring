@@ -22,8 +22,8 @@ node --env-file=.env index.js
 ```bash
 #!/bin/bash
 
-# Register
-curl -s "http://localhost:5001/api/started?pid=$$&name=My+Backup"
+# Register (--data-urlencode handles special characters in the name)
+curl -s --get --data-urlencode "name=Backup $(hostname)" "http://localhost:5001/api/started?pid=$$"
 
 # ... do work ...
 
