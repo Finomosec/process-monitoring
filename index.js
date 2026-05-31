@@ -131,7 +131,7 @@ app.get('/api/started', async (req, res) => {
     status: 'running'
   });
   await saveState();
-  res.json({ success: true, message: 'Process registered' });
+  res.json({ success: true, message: `Process registered: ${name}` });
 });
 
 app.get('/api/finished', async (req, res) => {
@@ -151,7 +151,7 @@ app.get('/api/finished', async (req, res) => {
   proc.status = 'finished';
   storage.set(pid, proc);
   await saveState();
-  res.json({ success: true, message: 'Process marked as finished' });
+  res.json({ success: true, message: `Process finished: ${proc.name}` });
 });
 
 app.get('/metrics', async (req, res) => {
